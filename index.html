@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Elevator 3D – Two-Floor Building Simulation</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mut:#6a7380;--bd:#d9dde3;--ok:#1a7f4b;--bad:#c62f3e;--wait:#b7791f;--acc:#2456d6;--slot:#eef1f5;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1d2128;--tx:#e8eaed;--mut:#9aa3af;--bd:#343b46;--ok:#4cc38a;--bad:#ff6b79;--wait:#f0b75a;--acc:#7da2ff;--slot:#262c35}}
+:root[data-theme="dark"]{--bg:#14171c;--card:#1d2128;--tx:#e8eaed;--mut:#9aa3af;--bd:#343b46;--ok:#4cc38a;--bad:#ff6b79;--wait:#f0b75a;--acc:#7da2ff;--slot:#262c35}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:12px;max-width:1150px;margin:0 auto}
+h1{font-size:18px;margin:0 0 2px}
+.sub{color:var(--mut);margin-bottom:10px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:10px}
+.card h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 6px}
+.ctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.ctl label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:2px}
+.ctl input[type=range]{width:105px}
+button{background:var(--acc);color:#fff;border:0;border-radius:7px;padding:7px 12px;font-size:13px;cursor:pointer}
+button.sec{background:var(--slot);color:var(--tx);border:1px solid var(--bd)}
+#stage{position:relative;height:64vh;min-height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--bd);margin-bottom:10px;background:var(--slot)}
+#stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);padding:4px 14px;border-radius:999px;font-weight:700;font-size:13px;color:#fff;background:#6a7380;pointer-events:none;white-space:nowrap}
+#hint{position:absolute;bottom:8px;left:10px;font-size:11px;color:var(--mut);pointer-events:none}
+.legend{position:absolute;top:10px;right:10px;font-size:11px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:5px 8px;line-height:1.6;pointer-events:none}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.sems{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sem{border:1px solid var(--bd);border-radius:8px;padding:6px;text-align:center}
+.sem b{font-size:22px;display:block}
+.sem small{color:var(--mut)}
+.th{display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid var(--bd);border-radius:8px;padding:5px 8px;margin-bottom:5px;font-size:13px}
+.th small{color:var(--mut);display:block}
+.badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;color:#fff}
+.IDLE{background:#7b8591}.RUNNING{background:var(--ok)}.BLOCKED{background:var(--bad)}
+#log{height:170px;overflow:auto;background:var(--slot);border-radius:8px;padding:8px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace}
+#log div.b{color:var(--bad)}#log div.w{color:var(--wait)}#log div.e{color:var(--bad);font-weight:700}
+.stats{display:flex;gap:14px;flex-wrap:wrap}
+.stats b{font-size:16px}
+.err{color:var(--bad)}
+</style>
+</head>
+<body>
+<h1>🛗 Elevator 3D – Two-Floor Building (Producer–Consumer)</h1>
+<div class="sub">Passengers waiting on the <b>ground floor</b> are <b>producers</b>, the elevator cabin slots are the <b>bounded buffer</b>, and passengers leaving on the <b>first floor</b> are <b>consumers</b>. The cabin rises as it fills and descends as it empties. Semaphores: <code>empty</code>, <code>full</code>, <code>mutex</code>.</div>
+
+<div class="card">
+  <div class="ctl">
+    <label>Buffer size: <span id="vCap">5</span><input type="range" id="cap" min="2" max="8" value="5"></label>
+    <label>Producers: <span id="vP">3</span><input type="range" id="np" min="1" max="4" value="3"></label>
+    <label>Consumers: <span id="vC">1</span><input type="range" id="nc" min="1" max="2" value="1"></label>
+    <label>Producer rate: <span id="vPR">7</span><input type="range" id="pr" min="1" max="10" value="7"></label>
+    <label>Consumer rate: <span id="vCR">3</span><input type="range" id="cr" min="1" max="10" value="3"></label>
+    <label>Speed: <span id="vSp">5</span><input type="range" id="sp" min="1" max="10" value="5"></label>
+    <label>Synchronization<select id="sync"><option value="1">ON (semaphores)</option><option value="0">OFF (race condition)</option></select></label>
+  </div>
+  <div class="ctl" style="margin-top:8px">
+    <button id="bRun">▶ Start</button>
+    <button id="bStep" class="sec">Step ⏭</button>
+    <button id="bReset" class="sec">Reset</button>
+    <button id="bView" class="sec">Reset view</button>
+  </div>
+</div>
+
+<div id="stage">
+  <div id="banner">EMPTY</div>
+  <div class="legend"><i style="background:#7b8591"></i>idle <i style="background:#1a7f4b;margin-left:6px"></i>running <i style="background:#c62f3e;margin-left:6px"></i>blocked</div>
+  <div id="hint">Drag to rotate · scroll / pinch to zoom</div>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card"><h2>Semaphores</h2>
+      <div class="sems">
+        <div class="sem"><small>empty (free)</small><b id="sE">5</b><small id="qE">blocked: –</small></div>
+        <div class="sem"><small>full (filled)</small><b id="sF">0</b><small id="qF">blocked: –</small></div>
+        <div class="sem"><small>mutex</small><b id="sM">1</b><small id="hM">free</small></div>
+      </div>
+    </div>
+    <div class="card"><h2>Counters</h2>
+      <div class="stats">
+        <span>Produced <b id="cP">0</b></span><span>Consumed <b id="cC">0</b></span><span>In buffer <b id="cB">0</b></span>
+        <span class="err">Lost <b id="cL">0</b></span><span class="err">Phantom <b id="cG">0</b></span>
+      </div>
+    </div>
+    <div class="card"><h2>Threads</h2><div id="threads"></div></div>
+  </div>
+  <div class="card"><h2>Event log (wait / signal)</h2><div id="log"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const COL=[0x2f7bd9,0x1fa59a,0xe08a2b,0x8e5bd6];
+const CSS=['#2f7bd9','#1fa59a','#e08a2b','#8e5bd6'];
+let S,timer=null,running=false;
+const dark=()=>window.matchMedia('(prefers-color-scheme: dark)').matches&&document.documentElement.getAttribute('data-theme')!=='light';
+
+/* ---------- three.js setup ---------- */
+const stage=$('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+stage.insertBefore(renderer.domElement,stage.firstChild);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(45,1,0.1,200);
+scene.add(new THREE.AmbientLight(0xffffff,0.7));
+const sun=new THREE.DirectionalLight(0xffffff,0.8);sun.position.set(8,16,10);scene.add(sun);
+const cam={th:0.4,ph:1.2,r:31};
+function setCam(){
+  camera.position.set(cam.r*Math.sin(cam.ph)*Math.sin(cam.th),cam.r*Math.cos(cam.ph)+4.8,cam.r*Math.sin(cam.ph)*Math.cos(cam.th));
+  camera.lookAt(0,4.8,0);
+}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+new ResizeObserver(resize).observe(stage);
+let drag=null,pinch=0;const pts=new Map();
+const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);drag=[e.clientX,e.clientY];});
+cv.addEventListener('pointermove',e=>{
+  if(!pts.has(e.pointerId))return;
+  const old=pts.get(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+  if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);if(pinch)cam.r=Math.min(60,Math.max(12,cam.r*pinch/d));pinch=d;}
+  else{cam.th-=(e.clientX-old[0])*0.006;cam.ph=Math.min(1.5,Math.max(0.25,cam.ph-(e.clientY-old[1])*0.006));}
+  setCam();
+});
+const up=e=>{pts.delete(e.pointerId);pinch=0;};
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',e=>{e.preventDefault();cam.r=Math.min(60,Math.max(12,cam.r*(1+e.deltaY*0.001)));setCam();},{passive:false});
+
+/* ---------- helpers ---------- */
+function mkLabel(txt,col,sx,sy){
+  const c=document.createElement('canvas');c.width=256;c.height=96;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthTest:false}));
+  sp.scale.set(sx||2.2,sy||0.82,1);sp.userData={c,txt:null,col:null};setLabel(sp,txt,col);return sp;
+}
+function setLabel(sp,txt,col){
+  const u=sp.userData;if(u.txt===txt&&u.col===col)return;u.txt=txt;u.col=col;
+  const x=u.c.getContext('2d');x.clearRect(0,0,256,96);x.fillStyle=col;x.fillRect(6,12,244,72);
+  x.fillStyle='#fff';let fs=36;x.font='bold '+fs+'px system-ui,sans-serif';while(x.measureText(txt).width>232&&fs>12){fs--;x.font='bold '+fs+'px system-ui,sans-serif';}x.textAlign='center';x.textBaseline='middle';x.fillText(txt,128,49);
+  sp.material.map.needsUpdate=true;
+}
+function person(color,s,opacity){
+  const g=new THREE.Group();
+  const m=new THREE.MeshStandardMaterial({color,transparent:opacity<1,opacity:opacity||1});
+  const b=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.34,0.85,16),m);b.position.y=0.43;
+  const h=new THREE.Mesh(new THREE.SphereGeometry(0.23,16,12),m);h.position.y=1.08;
+  g.add(b,h);g.scale.setScalar(s||1);g.userData.m=m;return g;
+}
+function addEdges(box,color,parent){
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry),new THREE.LineBasicMaterial({color}));
+  e.position.copy(box.position);parent.add(e);
+}
+
+/* ---------- build the 3D world ---------- */
+const T={};
+function build3D(){
+  if(T.world)scene.remove(T.world);
+  const d=dark();
+  scene.background=new THREE.Color(d?0x14171c:0xeef1f5);
+  const w=T.world=new THREE.Group();scene.add(w);
+  const cw=T.cw=S.cap*1.6+1,H=T.H=5,side=7.5,sh=cw/2+0.55,depth=9;
+  T.dIn=-sh;T.dOut=sh;
+  const edge=d?0x9aa3af:0x39424e;
+  const std=(c,o)=>new THREE.MeshStandardMaterial({color:c,transparent:o!==undefined,opacity:o===undefined?1:o,depthWrite:o===undefined,side:THREE.DoubleSide});
+  const box=(x,y,z,sx,sy,sz,mat)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);m.position.set(x,y,z);w.add(m);return m;};
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(2*(sh+side)+20,44),std(d?0x1b2027:0xe3e7ee));
+  ground.rotation.x=-Math.PI/2;ground.position.y=-0.25;w.add(ground);
+  const slab=std(d?0x3a4350:0xc3cad4),slab2=std(d?0x465163:0xb3bcc8);
+  [-1,1].forEach(k=>{box(k*(sh+side/2),-0.1,0,side,0.2,depth,slab);box(k*(sh+side/2),H-0.1,0,side,0.2,depth,slab2);});
+  const bw=2*(sh+side);
+  addEdges(box(0,H,0,bw,2*H,depth,std(0x7aa7ff,0.04)),edge,w);
+  box(0,H,-depth/2+0.05,bw,2*H,0.05,std(d?0x2a313b:0xdfe5ee,0.5));
+  // cabin
+  const cab=T.cab=new THREE.Group();w.add(cab);
+  const fl=new THREE.Mesh(new THREE.BoxGeometry(cw,0.2,3.2),std(d?0x4a5566:0xb8c0cc));fl.position.y=-0.1;cab.add(fl);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(cw,3.4,3.2),std(0x7aa7ff,0.12));body.position.y=1.7;cab.add(body);addEdges(body,edge,cab);
+  T.slotX=[];
+  for(let i=0;i<S.cap;i++){
+    const x=-cw/2+0.8+i*1.6;T.slotX.push(x);
+    const t=new THREE.Mesh(new THREE.BoxGeometry(1.3,0.06,1.3),std(d?0x5a6678:0xe6ebf2));t.position.set(x,0.03,0);cab.add(t);
+    const l=mkLabel('['+i+']','#6a7380',0.9,0.34);l.position.set(x,0.1,1.9);cab.add(l);
+  }
+  const mk=(c,txt,z,lc)=>{const g=new THREE.Group();const cone=new THREE.Mesh(new THREE.ConeGeometry(0.28,0.6,16),new THREE.MeshStandardMaterial({color:c}));cone.rotation.x=Math.PI;g.add(cone);const l=mkLabel(txt,lc,0.9,0.34);l.position.y=0.7;g.add(l);g.position.set(0,3.0,z);cab.add(g);return g;};
+  T.inA=mk(0x1a9e5a,'in',-0.55,'#1a7f4b');T.outA=mk(0xd63a4a,'out',0.55,'#c62f3e');
+  T.lamp=new THREE.Mesh(new THREE.SphereGeometry(0.28,16,12),new THREE.MeshStandardMaterial({color:0x2fbf71,emissive:0x2fbf71,emissiveIntensity:0.8}));
+  T.lamp.position.set(0,3.75,0);cab.add(T.lamp);
+  const ml=mkLabel('mutex','#39424e',1.3,0.48);ml.position.set(0,4.3,0);cab.add(ml);
+  // shaft rails + cable
+  const rm=std(d?0x6b7684:0x8b95a3);
+  [-sh+0.2,sh-0.2].forEach(x=>box(x,H,-1.8,0.15,2*H,0.15,rm));
+  box(0,2*H-0.1,-1.8,2*sh,0.2,0.2,rm);
+  T.cable=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1,6),new THREE.MeshBasicMaterial({color:edge}));w.add(T.cable);
+  // floor + door labels
+  const f1=mkLabel('GROUND FLOOR - PRODUCERS','#2f7bd9',5.4,2);f1.position.set(-(sh+side/2),3.9,-3.6);w.add(f1);
+  const f2=mkLabel('FIRST FLOOR - CONSUMERS','#d6489a',5.4,2);f2.position.set(sh+side/2,H+3.9,-3.6);w.add(f2);
+  const en=mkLabel('ENTRY','#2f7bd9',1.5,0.56);en.position.set(-sh-0.9,3.6,0);w.add(en);
+  const ex=mkLabel('EXIT','#d6489a',1.5,0.56);ex.position.set(sh+0.9,H+3.6,0);w.add(ex);
+  // avatars
+  T.av={};
+  S.th.forEach(t=>{
+    const P=t.type==='P';
+    const idx=+t.n.slice(1)-1,n=S.th.filter(x=>x.type===t.type).length;
+    const col=P?COL[idx%4]:0xd6489a;
+    const g=person(col,1.3);
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(0.7,24),new THREE.MeshBasicMaterial({color:0x7b8591}));
+    disc.rotation.x=-Math.PI/2;disc.position.y=0.03;g.add(disc);
+    const lab=mkLabel(t.n,'#7b8591',1.7,0.64);lab.position.y=2.35;g.add(lab);
+    const z=(idx-(n-1)/2)*2.2,k=P?-1:1,y0=P?0:H;
+    const a={g,disc,lab,z,y0,ix:k*(sh+side-1.5),ax:k*(sh+1.4),col};
+    g.position.set(a.ix,y0,z);w.add(g);T.av[t.n]=a;
+  });
+  T.items=[];T.slotItem=Array(S.cap).fill(null);
+}
+const slotW=i=>new THREE.Vector3(T.slotX[i],T.cab.position.y+0.08,0);
+const dropItem=it=>{T.world.remove(it.mesh);it.dead=true;};
+
+/* ---------- simulation (same logic as 2D version) ---------- */
+function rnd(a,b){return a+Math.floor(Math.random()*(b-a+1));}
+function gap(rate){const base=Math.max(1,12-rate);return rnd(Math.ceil(base/2),base*2);}
+function init(){
+  const cap=+$('cap').value,np=+$('np').value,nc=+$('nc').value;
+  S={cap,buf:Array(cap).fill(null),inP:0,outP:0,seq:0,sync:$('sync').value==='1',
+     sem:{empty:{v:cap,q:[]},full:{v:0,q:[]},mutex:{v:1,q:[]}},th:[],prod:0,cons:0,lost:0,ghost:0,tick:0};
+  for(let i=0;i<np;i++)S.th.push({n:'P'+(i+1),type:'P',step:0,state:'IDLE',timer:rnd(1,4),on:null});
+  for(let i=0;i<nc;i++)S.th.push({n:'C'+(i+1),type:'C',step:0,state:'IDLE',timer:rnd(2,6),on:null});
+  $('log').innerHTML='';
+  build3D();
+  log('Simulation ready. N='+cap+', sync '+(S.sync?'ON':'OFF'),'');
+  hud();
+}
+function log(t,c){
+  const d=document.createElement('div');d.className=c||'';d.textContent='['+S.tick+'] '+t;
+  const L=$('log');L.appendChild(d);while(L.children.length>100)L.removeChild(L.firstChild);L.scrollTop=L.scrollHeight;
+}
+function wait(name,t){
+  const s=S.sem[name];
+  if(s.v>0){s.v--;log(t.n+': wait('+name+') ✓ → '+name+'='+s.v);return true;}
+  t.state='BLOCKED';t.on=name;s.q.push(t);log(t.n+': wait('+name+') ✗ BLOCKED','b');return false;
+}
+function signal(name,t){
+  const s=S.sem[name];
+  if(s.q.length){const w=s.q.shift();w.state='RUNNING';w.step++;w.on=null;log(t.n+': signal('+name+') → wakes '+w.n,'w');}
+  else{s.v++;log(t.n+': signal('+name+') → '+name+'='+s.v);}
+}
+function done(t){t.state='IDLE';t.step=0;t.timer=gap(+(t.type==='P'?$('pr').value:$('cr').value));}
+function insert(t){
+  const id=++S.seq,i=S.inP,a=T.av[t.n];
+  if(S.buf[i]!==null){
+    S.lost++;log(t.n+': wrote item#'+id+' into OCCUPIED slot '+i+' → passenger LOST!','e');
+    const old=T.slotItem[i];if(old){old.state='lost';old.mesh.userData.m.color.set(0xd63a4a);}
+  }else log(t.n+': buf['+i+'] = item#'+id);
+  const mesh=person(a.col,0.9);mesh.position.copy(a.g.position);T.world.add(mesh);
+  const it={mesh,id,state:'toDoor',slot:i,z:a.z};T.items.push(it);T.slotItem[i]=it;
+  S.buf[i]=id;S.inP=(i+1)%S.cap;S.prod++;
+}
+function remove(t){
+  const i=S.outP,a=T.av[t.n];
+  if(S.buf[i]===null){
+    S.ghost++;log(t.n+': read EMPTY slot '+i+' → phantom passenger!','e');
+    const mesh=person(0x999999,0.9,0.35);mesh.position.copy(slotW(i));T.world.add(mesh);
+    T.items.push({mesh,state:'toOutDoor',to:t.n});
+  }else{
+    log(t.n+': item#'+S.buf[i]+' = buf['+i+']');
+    const it=T.slotItem[i];if(it){it.state='toOutDoor';it.to=t.n;}
+    T.slotItem[i]=null;S.buf[i]=null;S.cons++;
+  }
+  S.outP=(i+1)%S.cap;
+}
+function exec(t){
+  if(t.state==='IDLE'){if(--t.timer>0)return;t.state='RUNNING';t.step=0;log(t.n+': wants to '+(t.type==='P'?'board (produce)':'leave (consume)'));}
+  if(t.state!=='RUNNING')return;
+  if(!S.sync){t.type==='P'?insert(t):remove(t);done(t);return;}
+  const P=t.type==='P';
+  switch(t.step){
+    case 0:if(wait(P?'empty':'full',t))t.step++;break;
+    case 1:if(wait('mutex',t))t.step++;break;
+    case 2:P?insert(t):remove(t);t.step++;break;
+    case 3:signal('mutex',t);t.step++;break;
+    case 4:signal(P?'full':'empty',t);done(t);break;
+  }
+}
+function tick(){S.tick++;S.th.slice().sort(()=>Math.random()-.5).forEach(exec);hud();}
+
+/* ---------- HUD ---------- */
+const STEPS={P:['wait(empty)','wait(mutex)','insert into buffer','signal(mutex)','signal(full)'],C:['wait(full)','wait(mutex)','remove from buffer','signal(mutex)','signal(empty)']};
+function holder(){return S.sync?S.th.find(t=>t.state==='RUNNING'&&(t.step===2||t.step===3)):null;}
+function hud(){
+  const full=S.buf.filter(x=>x!==null).length;
+  const b=$('banner');
+  if(full===S.cap){b.textContent='ELEVATOR FULL – producers must wait';b.style.background='#c62f3e';}
+  else if(full===0){b.textContent='ELEVATOR EMPTY – consumers must wait';b.style.background='#b7791f';}
+  else{b.textContent=full+' / '+S.cap+' occupied';b.style.background='#2456d6';}
+  const E=S.sem.empty,F=S.sem.full,M=S.sem.mutex;
+  $('sE').textContent=E.v;$('sF').textContent=F.v;$('sM').textContent=M.v;
+  $('qE').textContent='blocked: '+(E.q.map(t=>t.n).join(', ')||'–');
+  $('qF').textContent='blocked: '+(F.q.map(t=>t.n).join(', ')||'–');
+  const h=holder();$('hM').textContent=S.sync?(h?'held by '+h.n:'free'):'not used';
+  $('threads').innerHTML=S.th.map(t=>{
+    const info=t.state==='IDLE'?'idle, next action in '+t.timer+' ticks':t.state==='BLOCKED'?'sleeping on '+t.on:(S.sync?'next: '+STEPS[t.type][t.step]:'no lock used');
+    return '<div class="th"><div><b>'+t.n+'</b> <span style="color:var(--mut)">'+(t.type==='P'?'Producer':'Consumer')+'</span><small>'+info+'</small></div><span class="badge '+t.state+'">'+t.state+'</span></div>';
+  }).join('');
+  $('cP').textContent=S.prod;$('cC').textContent=S.cons;$('cB').textContent=full;$('cL').textContent=S.lost;$('cG').textContent=S.ghost;
+}
+
+/* ---------- animation loop ---------- */
+const clock=new THREE.Clock();
+function frame(){
+  requestAnimationFrame(frame);
+  if(!S)return;
+  const t=clock.getElapsedTime();
+  const full=S.buf.filter(x=>x!==null).length;
+  const cab=T.cab;
+  cab.position.y+=((full/S.cap)*T.H-cab.position.y)*0.05;
+  {const top=cab.position.y+3.4,len=Math.max(0.01,2*T.H-0.1-top);T.cable.scale.y=len;T.cable.position.set(0,top+len/2,0);}
+  T.inA.position.x+=(T.slotX[S.inP]-T.inA.position.x)*0.2;
+  T.outA.position.x+=(T.slotX[S.outP]-T.outA.position.x)*0.2;
+  const h=holder();
+  T.lamp.material.color.set(h?0xd63a4a:0x2fbf71);T.lamp.material.emissive.set(h?0xd63a4a:0x2fbf71);
+  S.th.forEach(th=>{
+    const a=T.av[th.n];
+    const tx=th.state==='IDLE'?a.ix:a.ax;
+    a.g.position.x+=(tx-a.g.position.x)*0.08;
+    a.g.position.y=a.y0+(th.state==='RUNNING'?Math.abs(Math.sin(t*9))*0.14:0);
+    const c=th.state==='BLOCKED'?0xc62f3e:th.state==='RUNNING'?0x1a7f4b:0x7b8591;
+    a.disc.material.color.set(c);
+    setLabel(a.lab,th.n+(th.state==='BLOCKED'?' ✋':''),th.state==='BLOCKED'?'#c62f3e':th.state==='RUNNING'?'#1a7f4b':'#7b8591');
+  });
+  T.items.forEach(it=>{
+    if(it.dead)return;
+    const m=it.mesh,st=it.state;
+    if(st==='toDoor'){
+      const tg=new THREE.Vector3(T.dIn,0,it.z);m.position.lerp(tg,0.12);
+      if(m.position.distanceTo(tg)<0.3)it.state='toSlot';
+    }else if(st==='toSlot'||st==='inSlot'){
+      const tg=slotW(it.slot);m.position.lerp(tg,st==='inSlot'?1:0.12);
+      if(st==='toSlot'&&m.position.distanceTo(tg)<0.15)it.state='inSlot';
+    }else if(st==='toOutDoor'){
+      const tg=new THREE.Vector3(T.dOut,T.H,0);m.position.lerp(tg,0.1);
+      if(m.position.distanceTo(tg)<0.3)it.state='toExit';
+    }else if(st==='toExit'){
+      const a=T.av[it.to];const tg=new THREE.Vector3(a.g.position.x+0.9,a.y0,a.z);
+      m.position.lerp(tg,0.1);
+      if(m.position.distanceTo(tg)<0.5){m.scale.multiplyScalar(0.85);if(m.scale.x<0.06)dropItem(it);}
+    }else if(st==='lost'){
+      m.scale.multiplyScalar(0.9);m.position.y+=0.03;if(m.scale.x<0.06)dropItem(it);
+    }
+  });
+  T.items=T.items.filter(i=>!i.dead);
+  renderer.render(scene,camera);
+}
+
+/* ---------- controls ---------- */
+function loop(){clearInterval(timer);if(running)timer=setInterval(tick,Math.round(1500/(+$('sp').value)));}
+function setRun(r){running=r;$('bRun').textContent=r?'⏸ Pause':'▶ Start';loop();}
+$('bRun').onclick=()=>setRun(!running);
+$('bStep').onclick=()=>{setRun(false);tick();};
+$('bReset').onclick=()=>{setRun(false);init();};
+$('bView').onclick=()=>{cam.th=0.4;cam.ph=1.2;cam.r=31;setCam();};
+[['cap','vCap',1],['np','vP',1],['nc','vC',1],['pr','vPR',0],['cr','vCR',0],['sp','vSp',0]].forEach(([i,v,r])=>{
+  $(i).oninput=()=>{$(v).textContent=$(i).value;if(r){setRun(false);init();}else if(i==='sp')loop();};
+});
+$('sync').onchange=()=>{setRun(false);init();};
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(S)build3D();});
+resize();setCam();init();frame();
+})();
+</script>
+</body>
+</html>
